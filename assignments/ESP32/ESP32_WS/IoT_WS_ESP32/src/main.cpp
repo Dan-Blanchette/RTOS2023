@@ -1,7 +1,7 @@
 /**
  * @file main.cpp
  * @author Dan Blanchette
- * @brief  This program will run a web sever on the ESP32 Core 0
+ * @brief  This program will run a web sever on the ESP32 Core 0.
  * RTOS tasks for 2 I2C devices(temp/hum sensor, sunlight sensor) and the stepper motor on ESP32's processor
  * are ran on core 1
  * @version 0.1
