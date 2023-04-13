@@ -19,8 +19,8 @@ TaskHandle_t RTOS_Tasks;
 // Web Server Setup
 AsyncWebServer server(80);
 
-// Home WiFi credentials
-// censor this before submitting or pushing to git
+// Set WiFi credentials here
+// WARNING!!:censor these lines before submitting or pushing to git as credentials can accidentally be committed
 const char *ssid = "someones-network";
 const char *password = "some-password";
 
