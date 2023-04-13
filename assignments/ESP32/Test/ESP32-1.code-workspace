@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"name": "LED",
+			"path": "../LED"
+		},
+		{
+			"name": "Test",
+			"path": "."
+		}
+	],
+	"settings": {}
+}

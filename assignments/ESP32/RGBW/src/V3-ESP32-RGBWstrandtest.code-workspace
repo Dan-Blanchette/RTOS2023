@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"name": "V3-ESP32-RGBWstrandtest",
+			"path": "../../V3-ESP32-RGBWstrandtest"
+		},
+		{
+			"name": "RGBW",
+			"path": ".."
+		}
+	],
+	"settings": {}
+}
