@@ -11,24 +11,32 @@
  *
  */
 #include "devices.h"
+#include <string.h>
 
 // Task handles
 TaskHandle_t webServerTask;
+TaskHandle_t iotServerTask;
 TaskHandle_t RTOS_Tasks;
 
 // Web Server Setup
 AsyncWebServer server(80);
 
+// HTTPClient object
+HTTPClient http;
+
 // Home WiFi credentials
 // censor this before submitting or pushing to git
-const char *ssid = "someones-network";
-const char *password = "some-password";
+const char *ssid = "somenetwork";
+const char *password = "password";
+
+String serverName = "http://52.23.160.25:5000/IOTAPI/DetectServer";
 
 // Task 1 function
-void task1(void *parameter)
+void Task_ESP32_Serv(void *parameter)
 {
    while (1)
    {
+      
 
       // printf("Task 1 is running...\n");
       // Set up routes for web server
@@ -39,6 +47,24 @@ void task1(void *parameter)
       vTaskDelay(10000 / portTICK_PERIOD_MS);
    }
 }
+
+void Task_IoT_Server(void *parameter)
+{
+   while(1)
+   {
+      http.addHeader("Content-Type", "application/json");
+
+      // send HTTP POST and Store Response(POST return value)
+      int httpResponseVal = http.POST("{\"key\":\"2436e8c114aa64ee\"}");
+      String response = http.getString();
+
+      Serial.print("HTTP Response code: ");
+      Serial.println(httpResponseVal);
+      Serial.println(response);
+   }
+}
+
+
 
 /**
  * @brief Stepper Motor Task
@@ -91,11 +117,22 @@ void setup()
    Serial.println("Connected to WiFi");
    Serial.println(WiFi.localIP());
 
-   // Start the server
+   // WiFiClient client;
+   // Start up an ESP32 Web Server
    server.begin();
 
+   // Begin new connection to cloud website
+   //    http.begin("http://52.23.160.25:5000/");
+   int detServer = http.begin(serverName);
+   
+   // Serial.println(detServer);
+
+
+   
+
    // Create tasks
-   xTaskCreatePinnedToCore(task1, "Task 1", 10000, NULL, 4, &webServerTask, core_zero);
+   xTaskCreatePinnedToCore(Task_ESP32_Serv, "Task_ESP32_Serv", 10000, NULL, 3, &webServerTask, core_zero);
+   xTaskCreatePinnedToCore(Task_IoT_Server, "Task_IoT_Server", 10000, NULL, 4, &iotServerTask, core_zero);
    xTaskCreatePinnedToCore(Task_Stepper, "Task_Stepper", 10000, NULL, 4, &RTOS_Tasks, core_one);
    // xTaskCreatePinnedToCore(Task_HDC1080, "Task_HDC1080", 10000, NULL, 2, &RTOS_Tasks, core_one);
    // xTaskCreatePinnedToCore(Task_sunSensor, "Task_sunSensor", 10000, NULL, 2, &RTOS_Tasks, core_one);
