@@ -4,6 +4,7 @@
  * @brief  This program will run a web sever on the ESP32 Core 0.
  * RTOS tasks for 2 I2C devices(temp/hum sensor, sunlight sensor) and the stepper motor on ESP32's processor
  * are ran on core 1
+ * Credit: James Lasso for help with RESTful and IoT server functionality.
  * @version 0.1
  * @date 2023-04-12
  *
@@ -26,17 +27,18 @@ HTTPClient http;
 
 // Home WiFi credentials
 // censor this before submitting or pushing to git
-const char *ssid = "somenetwork";
-const char *password = "password";
+const char *ssid = "some network";
+const char *password = "123456789";
 
-String serverName = "http://52.23.160.25:5000/IOTAPI/DetectServer";
+// detect server IP address
+String serverDet = "http://52.23.160.25:5000/IOTAPI/DetectServer";
+String serverReg = "http://52.23.160.25:5000/IOTAPI/RegisterWithServer";
 
 // Task 1 function
 void Task_ESP32_Serv(void *parameter)
 {
    while (1)
    {
-      
 
       // printf("Task 1 is running...\n");
       // Set up routes for web server
@@ -50,7 +52,7 @@ void Task_ESP32_Serv(void *parameter)
 
 void Task_IoT_Server(void *parameter)
 {
-   while(1)
+   while (1)
    {
       http.addHeader("Content-Type", "application/json");
 
@@ -63,8 +65,6 @@ void Task_IoT_Server(void *parameter)
       Serial.println(response);
    }
 }
-
-
 
 /**
  * @brief Stepper Motor Task
@@ -123,16 +123,23 @@ void setup()
 
    // Begin new connection to cloud website
    //    http.begin("http://52.23.160.25:5000/");
-   int detServer = http.begin(serverName);
-   
-   // Serial.println(detServer);
+   // int detServer = http.begin(serverDet);
+   int regServer = http.begin(serverReg);
+   Serial.println("IoT Server Connection: 1 = connected, 0 = error connecting: ");
+   Serial.printf("Connection Status: %d\n", regServer);
 
-
-   
+   // Register Device with the server
+   http.addHeader("Content-Type", "application/json");
+   // Send POST code for registration
+   int postCode = http.POST("{\"key\":\"2436e8c114aa64ee\",\"iotid\":1001}");
+   String response = http.getString();
+   Serial.print("HTTP Response Code: ");
+   Serial.println(postCode);
+   Serial.println(response);
 
    // Create tasks
    xTaskCreatePinnedToCore(Task_ESP32_Serv, "Task_ESP32_Serv", 10000, NULL, 3, &webServerTask, core_zero);
-   xTaskCreatePinnedToCore(Task_IoT_Server, "Task_IoT_Server", 10000, NULL, 4, &iotServerTask, core_zero);
+   // xTaskCreatePinnedToCore(Task_IoT_Server, "Task_IoT_Server", 10000, NULL, 4, &iotServerTask, core_zero);
    xTaskCreatePinnedToCore(Task_Stepper, "Task_Stepper", 10000, NULL, 4, &RTOS_Tasks, core_one);
    // xTaskCreatePinnedToCore(Task_HDC1080, "Task_HDC1080", 10000, NULL, 2, &RTOS_Tasks, core_one);
    // xTaskCreatePinnedToCore(Task_sunSensor, "Task_sunSensor", 10000, NULL, 2, &RTOS_Tasks, core_one);
