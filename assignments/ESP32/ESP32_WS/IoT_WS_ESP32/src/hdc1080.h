@@ -11,7 +11,8 @@
 #ifndef HDC1080_H
 #define HDC1080_H
 
-#include <Arduino.h>
+// #include <Arduino.h>
+#include "devices.h"
 #include <Wire.h>
 
 // I2C reserves some addresses for special purposes. We exclude these from the scan.

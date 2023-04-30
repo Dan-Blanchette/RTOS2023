@@ -2,7 +2,7 @@
 
 
 
-// GP19
+// GP18
 #define BUTTONS1 18
 // GP09
 #define BUTTONS2 15

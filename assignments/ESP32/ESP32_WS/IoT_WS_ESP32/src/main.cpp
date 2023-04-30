@@ -3,7 +3,7 @@
  * @author Dan Blanchette
  * @brief  This program will run a web sever on the ESP32 Core 0.
  * RTOS tasks for 2 I2C devices(temp/hum sensor, sunlight sensor) and the stepper motor on ESP32's processor
- * are ran on core 1
+ * are ran on core 1.
  * Credit: James Lasso for help with RESTful and IoT server functionality.
  * @version 0.1
  * @date 2023-04-12
@@ -14,41 +14,48 @@
 #include "devices.h"
 #include <string.h>
 
+
 // Task handles
 TaskHandle_t webServerTask;
 TaskHandle_t iotServerTask;
 TaskHandle_t RTOS_Tasks;
 
-// Web Server Setup
-AsyncWebServer server(80);
+// current time
+unsigned long currentTime = millis();
+// Previous time
+unsigned long previousTime = 0;
+// Define timeout time in miliseconds
+const long timeoutTime = 2000;
 
 // HTTPClient object
 HTTPClient http;
 
-// Home WiFi credentials
-// censor this before submitting or pushing to git
-const char *ssid = "some network";
-const char *password = "123456789";
+// Queue Handles for stepper direction
+static QueueHandle_t xStateQueue = NULL;
+
+// States for debouncing buttons
+int lastState = LOW;
+int currentState;
+
+// Web Server Setup
+// AsyncWebServer server(80);
+WiFiServer server(80);
+String header;
+
+// Auxiliar variables to store current output state
+String output13State = "off";
+String output27State = "off";
+
 
 // detect server IP address
 String serverDet = "http://52.23.160.25:5000/IOTAPI/DetectServer";
 String serverReg = "http://52.23.160.25:5000/IOTAPI/RegisterWithServer";
 
-// Task 1 function
-void Task_ESP32_Serv(void *parameter)
-{
-   while (1)
-   {
+// Home WiFi credentials
+// censor this before submitting or pushing to git
+const char *ssid = "your-network";
+const char *password = "your-password";
 
-      // printf("Task 1 is running...\n");
-      // Set up routes for web server
-      server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
-                { request->send(200, "text/plain", "Hello, world"); });
-      server.on("/hdc-temp", HTTP_GET, [](AsyncWebServerRequest *request)
-                { request->send(200, "text/plain", "Temp = 68 F"); });
-      vTaskDelay(10000 / portTICK_PERIOD_MS);
-   }
-}
 
 void Task_IoT_Server(void *parameter)
 {
@@ -75,15 +82,26 @@ void Task_Stepper(void *parameter)
 {
    while (1)
    {
-      // Serial.println(WiFi.localIP());
-      //  Serial.println("Task 2 is running...\n");
-      for (int i = 1; i < 9; i++)
-      {
-         stepper_move(i);
-         vTaskDelay(10 / portTICK_PERIOD_MS);
-      }
+      int rec_val;
+      // // Serial.println(WiFi.localIP());
+      // // Serial.println("Stepper is running CCW...\n");
+      // // CCW
+      // for (int i = 1; i < 9; i++)
+      // {
+      //    stepper_move(i);
+      //    vTaskDelay(10 / portTICK_PERIOD_MS);
+      // }
+
+      // NOTE: step_dir(bool dir) has vTaskDelay(10 / portTICK_PERIOD_MS)
+      // Flag Directions (True = CW, False = CCW)
+      xQueueReceive(xStateQueue, &rec_val, 0U);
+      Serial.print("Rec Val: ");
+      Serial.println(rec_val);
+      step_dir(rec_val);
    }
 }
+
+
 
 // void Task_HDC1080(void *parameter)
 // {
@@ -105,8 +123,20 @@ void Task_Stepper(void *parameter)
 void setup()
 {
    Serial.begin(115200);
+   /****************RTOS DEVICES***********/
+   // init stepper pins
    setup_stepper();
+   d13_setup();
+   // init button pins
+   // setup_buttons();
 
+  /**********QUEUE INSTANTIATION********/
+  // xStateQueue = xQueueCreate(1, sizeof(int));
+
+  // ESP.restart();
+
+
+   /************** WIFI SETUP ******************/
    // Connect to WiFi
    WiFi.begin(ssid, password);
    while (WiFi.status() != WL_CONNECTED)
@@ -117,7 +147,11 @@ void setup()
    Serial.println("Connected to WiFi");
    Serial.println(WiFi.localIP());
 
-   // WiFiClient client;
+   WiFiClient client;
+
+   // Create the state queue
+   xStateQueue = xQueueCreate(1, sizeof(int));
+
    // Start up an ESP32 Web Server
    server.begin();
 
@@ -137,9 +171,13 @@ void setup()
    Serial.println(postCode);
    Serial.println(response);
 
-   // Create tasks
-   xTaskCreatePinnedToCore(Task_ESP32_Serv, "Task_ESP32_Serv", 10000, NULL, 3, &webServerTask, core_zero);
+   /** Create Tasks **/
+
+   // Web Server and IoT RTOS Server Tasks
+   //xTaskCreatePinnedToCore(Task_ESP32_Serv, "Task_ESP32_Serv", 10000, NULL, 3, &webServerTask, core_zero);
    // xTaskCreatePinnedToCore(Task_IoT_Server, "Task_IoT_Server", 10000, NULL, 4, &iotServerTask, core_zero);
+
+   // RTOS Tasks for Connected Devices
    xTaskCreatePinnedToCore(Task_Stepper, "Task_Stepper", 10000, NULL, 4, &RTOS_Tasks, core_one);
    // xTaskCreatePinnedToCore(Task_HDC1080, "Task_HDC1080", 10000, NULL, 2, &RTOS_Tasks, core_one);
    // xTaskCreatePinnedToCore(Task_sunSensor, "Task_sunSensor", 10000, NULL, 2, &RTOS_Tasks, core_one);
@@ -147,5 +185,114 @@ void setup()
 
 void loop()
 {
-   // Nothing to do here
+  WiFiClient client = server.available();   // Listen for incoming clients
+  
+  int state;
+
+  if (client) {                             // If a new client connects,
+    currentTime = millis();
+    previousTime = currentTime;
+    Serial.println("New Client.");          // print a message out in the serial port
+    String currentLine = "";                // make a String to hold incoming data from the client
+    while (client.connected() && currentTime - previousTime <= timeoutTime) {  // loop while the client's connected
+      currentTime = millis();
+      if (client.available()) {             // if there's bytes to read from the client,
+        char c = client.read();             // read a byte, then
+        Serial.write(c);                    // print it out the serial monitor
+        header += c;
+        if (c == '\n') {                    // if the byte is a newline character
+          // if the current line is blank, you got two newline characters in a row.
+          // that's the end of the client HTTP request, so send a response:
+          if (currentLine.length() == 0) {
+            // HTTP headers always start with a response code (e.g. HTTP/1.1 200 OK)
+            // and a content-type so the client knows what's coming, then a blank line:
+            client.println("HTTP/1.1 200 OK");
+            client.println("Content-type:text/html");
+            client.println("Connection: close");
+            client.println();
+            
+            // turns the GPIOs on and off
+            if (header.indexOf("GET /13/on") >= 0) {
+              Serial.println("GPIO 13 on");
+              output13State = "on";
+              Serial.println("Sending 1 to Queue.. value: ");
+              state = 1;
+              xQueueSend(xStateQueue, &state, 0U);
+              delay(50);
+              //xQueueReceive(xStateQueue, &state, 0U);
+              Serial.print("State Value from server ");
+              Serial.println(state);
+              // digitalWrite(output13, HIGH);
+            } else if (header.indexOf("GET /13/off") >= 0) {
+              Serial.println("GPIO 13 off");
+              output13State = "off";
+              Serial.println("Sending 1 to Queue.. value: ");
+              state = 0;
+              xQueueSend(xStateQueue, &state, 0U);
+              delay(50);
+              //xQueueReceive(xStateQueue, &state, 0U);
+              Serial.print("State Value from server ");
+              Serial.println(state);
+            } else if (header.indexOf("GET /27/on") >= 0) {
+              Serial.println("GPIO 27 on");
+              output27State = "on";
+              digitalWrite(output27, HIGH);
+            } else if (header.indexOf("GET /27/off") >= 0) {
+              Serial.println("GPIO 27 off");
+              output27State = "off";
+              digitalWrite(output27, LOW);
+            }
+            
+            // Display the HTML web page
+            client.println("<!DOCTYPE html><html>");
+            client.println("<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
+            client.println("<link rel=\"icon\" href=\"data:,\">");
+            // CSS to style the on/off buttons 
+            // Feel free to change the background-color and font-size attributes to fit your preferences
+            client.println("<style>html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center;}");
+            client.println(".button { background-color: #4CAF50; border: none; color: white; padding: 16px 40px;");
+            client.println("text-decoration: none; font-size: 30px; margin: 2px; cursor: pointer;}");
+            client.println(".button2 {background-color: #555555;}</style></head>");
+            
+            // Web Page Heading
+            client.println("<body><h1>ESP32 Web Server</h1>");
+            
+            // Display current state, and ON/OFF buttons for GPIO 26  
+            client.println("<p>GPIO 13 - State " + output13State + "</p>");
+            // If the output26State is off, it displays the ON button       
+            if (output13State=="off") {
+              client.println("<p><a href=\"/13/on\"><button class=\"button\">CW</button></a></p>");
+            } else {
+              client.println("<p><a href=\"/13/off\"><button class=\"button button2\">CCW</button></a></p>");
+            } 
+               
+            // Display current state, and ON/OFF buttons for GPIO 27  
+            client.println("<p>GPIO 27 - State " + output27State + "</p>");
+            // If the output27State is off, it displays the ON button       
+            if (output27State=="off") {
+              client.println("<p><a href=\"/27/on\"><button class=\"button\">ON</button></a></p>");
+            } else {
+              client.println("<p><a href=\"/27/off\"><button class=\"button button2\">OFF</button></a></p>");
+            }
+            client.println("</body></html>");
+            
+            // The HTTP response ends with another blank line
+            client.println();
+            // Break out of the while loop
+            break;
+          } else { // if you got a newline, then clear currentLine
+            currentLine = "";
+          }
+        } else if (c != '\r') {  // if you got anything else but a carriage return character,
+          currentLine += c;      // add it to the end of the currentLine
+        }
+      }
+    }
+    // Clear the header variable
+    header = "";
+    // Close the connection
+    client.stop();
+    Serial.println("Client disconnected.");
+    Serial.println("");
+  }
 }
