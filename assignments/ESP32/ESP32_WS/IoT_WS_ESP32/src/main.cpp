@@ -59,8 +59,8 @@ String serverReg = "http://52.23.160.25:5000/IOTAPI/RegisterWithServer";
 
 // Home WiFi credentials
 // censor this before submitting or pushing to git
-const char *ssid = "sending-stone";
-const char *password = "4579W!$hThis#";
+const char *ssid = "some-network";
+const char *password = "some-password";
 
 /***********************TSL2591**********************/
 void configureSensor(void)
@@ -110,32 +110,58 @@ void displaySensorDetails(void)
   delay(500);
 }
 
+/**
+ * @brief   // Simple data read example. Just read the infrared, fullspecrtrum diode 
+  // or 'visible' (difference between the two) channels.
+  // This can take 100-600 milliseconds! Uncomment whichever of the following you want to read
+ * 
+ */
 void simpleRead(void)
 {
   uint16_t x = tsl.getLuminosity(TSL2591_VISIBLE);
+  // uint16_t x = tsl.getLuminosity(TSL2591_FULLSPECTRUM);
+  // uint16_t x = tsl.getLuminosity(TSL2591_INFRARED);
   Serial.print(F("[ ")); Serial.print(millis()); Serial.print(F(" ms ] "));
   Serial.print(F("Luminosity: "));
   Serial.println(x, DEC);
   vTaskDelay(5000 / portTICK_PERIOD_MS);
 }
 
-
-
-void Task_IoT_Server(void *parameter)
+/**
+ * @brief   // More advanced data read example. Read 32 bits with top 16 bits IR, bottom 16 bits full spectrum
+  // That way you can do whatever math and comparisons you want!
+ * 
+ */
+void advancedRead(void)
 {
-  while (1)
-  {
-    http.addHeader("Content-Type", "application/json");
 
-    // send HTTP POST and Store Response(POST return value)
-    int httpResponseVal = http.POST("{\"key\":\"2436e8c114aa64ee\"}");
-    String response = http.getString();
-
-    Serial.print("HTTP Response code: ");
-    Serial.println(httpResponseVal);
-    Serial.println(response);
-  }
+  uint32_t lum = tsl.getFullLuminosity();
+  uint16_t ir, full;
+  ir = lum >> 16;
+  full = lum & 0xFFFF;
+  Serial.print(F("[ ")); Serial.print(millis()); Serial.print(F(" ms ] "));
+  Serial.print(F("IR: ")); Serial.print(ir);  Serial.print(F("  "));
+  Serial.print(F("Full: ")); Serial.print(full); Serial.print(F("  "));
+  Serial.print(F("Visible: ")); Serial.print(full - ir); Serial.print(F("  "));
+  Serial.print(F("Lux: ")); Serial.println(tsl.calculateLux(full, ir), 6);
 }
+
+/********************RTOS TASKS****************************/
+// void Task_IoT_Server(void *parameter)
+// {
+//   while (1)
+//   {
+//     http.addHeader("Content-Type", "application/json");
+
+//     // send HTTP POST and Store Response(POST return value)
+//     int httpResponseVal = http.POST("{\"key\":\"2436e8c114aa64ee\"}");
+//     String response = http.getString();
+
+//     Serial.print("HTTP Response code: ");
+//     Serial.println(httpResponseVal);
+//     Serial.println(response);
+//   }
+// }
 
 /**
  * @brief Stepper Motor Task
@@ -250,6 +276,8 @@ void setup()
   // Start up an ESP32 Web Server
   server.begin();
 
+  // IOT Setup
+
   // Begin new connection to cloud website
   //    http.begin("http://52.23.160.25:5000/");
   // int detServer = http.begin(serverDet);
@@ -269,12 +297,12 @@ void setup()
   /** Create Tasks **/
 
   // Web Server and IoT RTOS Server Tasks
-  // xTaskCreatePinnedToCore(Task_IoT_Server, "Task_IoT_Server", 10000, NULL, 3, &iotServerTask, core_zero);
+  // xTaskCreatePinnedToCore(Task_IoT_Server, "Task_IoT_Server", 10000, NULL, 1, &iotServerTask, core_zero);
 
   // RTOS Tasks for Connected Devices
   xTaskCreatePinnedToCore(Task_Stepper, "Task_Stepper", 10000, NULL, 4, &RTOS_Tasks, core_one);
-  xTaskCreatePinnedToCore(Task_HDC1080, "Task_HDC1080", 10000, NULL, 2, &RTOS_Tasks, core_one);
-  xTaskCreatePinnedToCore(Task_sunSensor, "Task_sunSensor", 10000, NULL, 1, &RTOS_Tasks, core_one);
+  xTaskCreatePinnedToCore(Task_HDC1080, "Task_HDC1080", 10000, NULL, 3, &RTOS_Tasks, core_one);
+  xTaskCreatePinnedToCore(Task_sunSensor, "Task_sunSensor", 10000, NULL, 2, &RTOS_Tasks, core_one);
 }
 
 // Handles ESP32 local web client server requests and user/client interactions with the stepper motor
