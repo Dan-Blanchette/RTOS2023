@@ -5,6 +5,8 @@
 #include <HTTPClient.h>
 #include <Wire.h>
 #include "ClosedCube_HDC1080.h"
+#include <Adafruit_Sensor.h>
+#include "Adafruit_TSL2591.h"
 
 // #include <WebServer.h>
 #include <ESPAsyncWebServer.h>
@@ -15,7 +17,6 @@
 // I2C PINS
 #define SCL 22
 #define SDA 23
-
 
 
 // Stepper PINS
@@ -58,6 +59,7 @@ void setup_light_sensor();
 // Device Functions
 void stepper_move(int step);
 void step_dir(int direction);
+void displaySensorDetails(void *parameters);
 // int set_state();
 // void get_state();
 
