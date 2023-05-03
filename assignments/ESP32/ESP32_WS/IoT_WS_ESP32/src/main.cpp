@@ -110,6 +110,14 @@ void displaySensorDetails(void)
   delay(500);
 }
 
+void simpleRead(void)
+{
+  uint16_t x = tsl.getLuminosity(TSL2591_VISIBLE);
+  Serial.print(F("[ ")); Serial.print(millis()); Serial.print(F(" ms ] "));
+  Serial.print(F("Luminosity: "));
+  Serial.println(x, DEC);
+  vTaskDelay(5000 / portTICK_PERIOD_MS);
+}
 
 
 
@@ -170,13 +178,13 @@ void Task_HDC1080(void *parameter)
   }
 }
 
-// void Task_sunSensor(void *Parameters)
-// {
-//    while (1)
-//    {
-//       vTaskDelay(5000 / portTICK_PERIOD_MS);
-//    }
-// }
+void Task_sunSensor(void *Parameters)
+{
+  while (1)
+  {
+    simpleRead();
+  }
+}
 
 void setup()
 {
@@ -194,11 +202,11 @@ void setup()
 
   /********HDC1080****************/
   // setup defaults for HDC1080
-  // hdc1080.begin(0x40);
-  // Serial.print("Manufacturer ID=0x");
-  // Serial.println(hdc1080.readManufacturerId(), HEX);
-  // Serial.print("Device ID=0x");
-  // Serial.println(hdc1080.readDeviceId(), HEX);
+  hdc1080.begin(0x40);
+  Serial.print("Manufacturer ID=0x");
+  Serial.println(hdc1080.readManufacturerId(), HEX);
+  Serial.print("Device ID=0x");
+  Serial.println(hdc1080.readDeviceId(), HEX);
 
   /**********QUEUE INSTANTIATION********/
   xStateQueue = xQueueCreate(1, sizeof(int));
@@ -206,7 +214,6 @@ void setup()
   displaySensorDetails();
   configureSensor();
 
-  // ESP.restart();
 
   /*****TSL2591***********************************/
   // Scanner Test
@@ -262,12 +269,12 @@ void setup()
   /** Create Tasks **/
 
   // Web Server and IoT RTOS Server Tasks
-  // xTaskCreatePinnedToCore(Task_IoT_Server, "Task_IoT_Server", 10000, NULL, 4, &iotServerTask, core_zero);
+  // xTaskCreatePinnedToCore(Task_IoT_Server, "Task_IoT_Server", 10000, NULL, 3, &iotServerTask, core_zero);
 
   // RTOS Tasks for Connected Devices
   xTaskCreatePinnedToCore(Task_Stepper, "Task_Stepper", 10000, NULL, 4, &RTOS_Tasks, core_one);
-  // xTaskCreatePinnedToCore(Task_HDC1080, "Task_HDC1080", 10000, NULL, 2, &RTOS_Tasks, core_one);
-  // xTaskCreatePinnedToCore(Task_sunSensor, "Task_sunSensor", 10000, NULL, 2, &RTOS_Tasks, core_one);
+  xTaskCreatePinnedToCore(Task_HDC1080, "Task_HDC1080", 10000, NULL, 2, &RTOS_Tasks, core_one);
+  xTaskCreatePinnedToCore(Task_sunSensor, "Task_sunSensor", 10000, NULL, 1, &RTOS_Tasks, core_one);
 }
 
 // Handles ESP32 local web client server requests and user/client interactions with the stepper motor
