@@ -1,8 +1,8 @@
 /**
  * @file main.cpp
  * @author Dan Blanchette
- * @brief  This program will run a web sever on the ESP32 Core 0.
- * RTOS tasks for 2 I2C devices(temp/hum sensor, sunlight sensor) and the stepper motor on ESP32's processor
+ * @brief  This program will run a web sever on the ESP32 Core 0 (Uses Loop Function).
+ * RTOS tasks for 2 I2C devices(temp/hum sensor, sunlight sensor, and the stepper motor on ESP32's processor
  * are ran on core 1.
  * Credit: James Lasso for help with RESTful and IoT server functionality.
  * @version 0.1
@@ -12,7 +12,6 @@
  *
  */
 #include "devices.h"
-
 #include <string.h>
 
 Adafruit_TSL2591 tsl = Adafruit_TSL2591(2591);
@@ -27,6 +26,8 @@ TaskHandle_t RTOS_Tasks;
 // HDC1080 Class Object
 ClosedCube_HDC1080 hdc1080;
 
+
+/******************WEB CLIENT VARIABLES*******************/
 // current time
 unsigned long currentTime = millis();
 // Previous time
@@ -39,6 +40,10 @@ HTTPClient http;
 
 // Queue Handles for stepper direction
 static QueueHandle_t xStateQueue = NULL;
+// Queue Handle for Sunlight Sensor
+static QueueHandle_t xVisibleQueue = NULL;
+static QueueHandle_t xInfraredQueue = NULL;
+static QueueHandle_t xFullSpectQueue = NULL;
 
 // States for debouncing buttons
 int lastState = LOW;
@@ -61,6 +66,8 @@ String serverReg = "http://52.23.160.25:5000/IOTAPI/RegisterWithServer";
 // censor this before submitting or pushing to git
 const char *ssid = "some-network";
 const char *password = "some-password";
+
+
 
 /***********************TSL2591**********************/
 void configureSensor(void)
@@ -118,13 +125,19 @@ void displaySensorDetails(void)
  */
 void simpleRead(void)
 {
-  uint16_t x = tsl.getLuminosity(TSL2591_VISIBLE);
-  // uint16_t x = tsl.getLuminosity(TSL2591_FULLSPECTRUM);
-  // uint16_t x = tsl.getLuminosity(TSL2591_INFRARED);
-  Serial.print(F("[ ")); Serial.print(millis()); Serial.print(F(" ms ] "));
-  Serial.print(F("Luminosity: "));
-  Serial.println(x, DEC);
-  vTaskDelay(5000 / portTICK_PERIOD_MS);
+  uint16_t vis = tsl.getLuminosity(TSL2591_VISIBLE);
+  uint16_t fs = tsl.getLuminosity(TSL2591_FULLSPECTRUM);
+  uint16_t ir = tsl.getLuminosity(TSL2591_INFRARED);
+  xQueueSend(xVisibleQueue, &vis, 0U);
+  vTaskDelay(20 / portTICK_PERIOD_MS);
+  xQueueSend(xInfraredQueue, &ir, 0U);
+  vTaskDelay(20 / portTICK_PERIOD_MS);
+  xQueueSend(xFullSpectQueue, &fs, 0U);
+  vTaskDelay(20 / portTICK_PERIOD_MS);
+  // Serial.print(F("[ ")); Serial.print(millis()); Serial.print(F(" ms ] "));
+  // Serial.print(F("Infrared: "));
+  // Serial.println(ir, DEC);
+  // vTaskDelay(5000 / portTICK_PERIOD_MS);
 }
 
 /**
@@ -147,6 +160,8 @@ void advancedRead(void)
 }
 
 /********************RTOS TASKS****************************/
+
+
 // void Task_IoT_Server(void *parameter)
 // {
 //   while (1)
@@ -234,8 +249,7 @@ void setup()
   Serial.print("Device ID=0x");
   Serial.println(hdc1080.readDeviceId(), HEX);
 
-  /**********QUEUE INSTANTIATION********/
-  xStateQueue = xQueueCreate(1, sizeof(int));
+
   /************SETUP TSL2591*******************/
   displaySensorDetails();
   configureSensor();
@@ -257,6 +271,12 @@ void setup()
   // displaySensorDetails();
 
 
+  /**********QUEUE INSTANTIATION********/
+  xStateQueue = xQueueCreate(1, sizeof(int));
+  xVisibleQueue = xQueueCreate(1, sizeof(uint16_t));
+  xInfraredQueue = xQueueCreate(1, sizeof(uint16_t));
+  xFullSpectQueue = xQueueCreate(1, sizeof(uint16_t));
+
   /************** WIFI SETUP ******************/
   // Connect to WiFi
   WiFi.begin(ssid, password);
@@ -276,7 +296,7 @@ void setup()
   // Start up an ESP32 Web Server
   server.begin();
 
-  // IOT Setup
+  /*************IOT Setup*****************/ 
 
   // Begin new connection to cloud website
   //    http.begin("http://52.23.160.25:5000/");
@@ -311,6 +331,9 @@ void loop()
   WiFiClient client = server.available(); // Listen for incoming clients
 
   int state;
+  uint16_t vis_val;
+  uint16_t ir_val;
+  uint16_t fullSpec_val;
 
   if (client)
   { // If a new client connects,
@@ -381,8 +404,11 @@ void loop()
             client.println("<body><h1>ESP32 Web Server</h1>");
 
             // Display current state, and ON/OFF buttons for GPIO 26
-            client.println("<p> D13 LED - State " + output13State + "</p>");
-            // If the output26State is off, it displays the ON button
+            client.println("<body><h2> Stepper Motor Direction </h2>");
+            client.println("<p>D13_LED = off: Stepper = CCW.");
+            client.println("<p>When D13_LED = on: Stepper = CW. </p>");
+            client.println("<p>Default State: D13_LED off, Stepper = CCW");
+            client.println("<body><h3> D13 LED - State: " + output13State + "</h3>");
             if (output13State == "off")
             {
               client.println("<p><a href=\"/13/on\"><button class=\"button\">CW</button></a></p>");
@@ -392,6 +418,22 @@ void loop()
               client.println("<p><a href=\"/13/off\"><button class=\"button button2\">CCW</button></a></p>");
             }
 
+            client.println("<body><h3>TR2591 Photo Sensor Data</h3>");
+            // Get the Visible Light Reading From the Sensor and update to webpage
+            xQueueReceive(xVisibleQueue, &vis_val,0U);
+            client.print("<p>Visible: ");
+            client.print(vis_val, DEC);
+            client.println(" Lumen(s)</p>");
+            // Get the Infrared Reading From the Sensor and update to webpage
+            xQueueReceive(xInfraredQueue, &ir_val,0U);
+            client.print("<p>Ifrared: ");
+            client.print(ir_val, DEC);
+            client.println(" micron(s)");
+            // Get the Full Spectrum Reading and update to webpage
+            xQueueReceive(xFullSpectQueue, &fullSpec_val, 0U);
+            client.print("<p>Full Spectrum: ");
+            client.print(fullSpec_val, DEC);
+            client.println(" Angstrom(s)");
             // The HTTP response ends with another blank line
             client.println();
             // Break out of the while loop
@@ -416,4 +458,3 @@ void loop()
     Serial.println("");
   }
 }
-
