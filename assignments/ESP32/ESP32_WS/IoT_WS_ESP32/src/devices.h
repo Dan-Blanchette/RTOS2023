@@ -3,10 +3,20 @@
 // ESP32 Web Server Libraries
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <Wire.h>
+#include "ClosedCube_HDC1080.h"
+
 // #include <WebServer.h>
 #include <ESPAsyncWebServer.h>
 // Device Libraries
 #include <Arduino.h>
+
+
+// I2C PINS
+#define SCL 22
+#define SDA 23
+
+
 
 // Stepper PINS
 #define STEP_IN1 15
@@ -19,7 +29,7 @@
 
 //Assign output variabless to GPIO pins
 #define output13  13
-#define output27 27
+//#define output27 27
 
 
 // Vandalino Buttons
@@ -50,6 +60,7 @@ void stepper_move(int step);
 void step_dir(int direction);
 // int set_state();
 // void get_state();
+
 
 
 #endif

@@ -128,8 +128,8 @@ void step_dir(int direction)
 void d13_setup()
 {
    pinMode(output13, OUTPUT);
-   pinMode(output27, OUTPUT);
+  // pinMode(output27, OUTPUT);
 
    digitalWrite(output13, LOW);
-   digitalWrite(output27, LOW);
+   // digitalWrite(output27, LOW);
 }
