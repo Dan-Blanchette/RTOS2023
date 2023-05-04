@@ -26,7 +26,6 @@ TaskHandle_t RTOS_Tasks;
 // HDC1080 Class Object
 ClosedCube_HDC1080 hdc1080;
 
-
 /******************WEB CLIENT VARIABLES*******************/
 // current time
 unsigned long currentTime = millis();
@@ -44,6 +43,12 @@ static QueueHandle_t xStateQueue = NULL;
 static QueueHandle_t xVisibleQueue = NULL;
 static QueueHandle_t xInfraredQueue = NULL;
 static QueueHandle_t xFullSpectQueue = NULL;
+// Queue Handle for Temp/Hum Sensor
+// celsius values
+static QueueHandle_t xCtempQueue = NULL;
+// fahrenheit values
+static QueueHandle_t xFtempQueue = NULL;
+static QueueHandle_t xRhQueue = NULL;
 
 // Web Server Setup
 WiFiServer server(80);
@@ -55,13 +60,14 @@ String output13State = "off";
 // detect server IP address
 String serverDet = "http://52.23.160.25:5000/IOTAPI/DetectServer";
 String serverReg = "http://52.23.160.25:5000/IOTAPI/RegisterWithServer";
+String serverData = "http://52.23.160.25:5000//IOTAPI/IOTData";
+String serverQueryForCommands = "http://52.23.160.25:5000//IOTAPI/QueryServerForCommands";
 
 // Home WiFi credentials
 // censor this before submitting or pushing to git
 const char *ssid = "sending-stone";
 const char *password = "4579W!$hThis#";
-//test
-
+// test
 
 /***********************TSL2591**********************/
 void configureSensor(void)
@@ -70,52 +76,37 @@ void configureSensor(void)
   tsl.setTiming(TSL2591_INTEGRATIONTIME_300MS);
 
   Serial.println(F("------------------------------------"));
-  Serial.print  (F("Gain:         "));
+  Serial.print(F("Gain:         "));
   tsl2591Gain_t gain = tsl.getGain();
-  switch(gain)
+  switch (gain)
   {
-    case TSL2591_GAIN_LOW:
-      Serial.println(F("1x (Low)"));
-      break;
-    case TSL2591_GAIN_MED:
-      Serial.println(F("25x (Medium)"));
-      break;
-    case TSL2591_GAIN_HIGH:
-      Serial.println(F("428x (High)"));
-      break;
-    case TSL2591_GAIN_MAX:
-      Serial.println(F("9876x (Max)"));
-      break;
+  case TSL2591_GAIN_LOW:
+    Serial.println(F("1x (Low)"));
+    break;
+  case TSL2591_GAIN_MED:
+    Serial.println(F("25x (Medium)"));
+    break;
+  case TSL2591_GAIN_HIGH:
+    Serial.println(F("428x (High)"));
+    break;
+  case TSL2591_GAIN_MAX:
+    Serial.println(F("9876x (Max)"));
+    break;
   }
-  Serial.print  (F("Timing:       "));
-  Serial.print((tsl.getTiming() + 1) * 100, DEC); 
+  Serial.print(F("Timing:       "));
+  Serial.print((tsl.getTiming() + 1) * 100, DEC);
   Serial.println(F(" ms"));
   Serial.println(F("------------------------------------"));
   Serial.println(F(""));
 }
 
 
-void displaySensorDetails(void)
-{
-  sensor_t sensor;
-  tsl.getSensor(&sensor);
-  Serial.println(F("------------------------------------"));
-  Serial.print  (F("Sensor:       ")); Serial.println(sensor.name);
-  Serial.print  (F("Driver Ver:   ")); Serial.println(sensor.version);
-  Serial.print  (F("Unique ID:    ")); Serial.println(sensor.sensor_id);
-  Serial.print  (F("Max Value:    ")); Serial.print(sensor.max_value); Serial.println(F(" lux"));
-  Serial.print  (F("Min Value:    ")); Serial.print(sensor.min_value); Serial.println(F(" lux"));
-  Serial.print  (F("Resolution:   ")); Serial.print(sensor.resolution, 4); Serial.println(F(" lux"));  
-  Serial.println(F("------------------------------------"));
-  Serial.println(F(""));
-  delay(500);
-}
 
 /**
- * @brief   // Simple data read example. Just read the infrared, fullspecrtrum diode 
+ * @brief   // Simple data read example. Just read the infrared, fullspecrtrum diode
   // or 'visible' (difference between the two) channels.
   // This can take 100-600 milliseconds! Uncomment whichever of the following you want to read
- * 
+ *
  */
 void simpleRead(void)
 {
@@ -133,7 +124,7 @@ void simpleRead(void)
 /**
  * @brief   // More advanced data read example. Read 32 bits with top 16 bits IR, bottom 16 bits full spectrum
   // That way you can do whatever math and comparisons you want!
- * 
+ *
  */
 void advancedRead(void)
 {
@@ -142,31 +133,46 @@ void advancedRead(void)
   uint16_t ir, full;
   ir = lum >> 16;
   full = lum & 0xFFFF;
-  Serial.print(F("[ ")); Serial.print(millis()); Serial.print(F(" ms ] "));
-  Serial.print(F("IR: ")); Serial.print(ir);  Serial.print(F("  "));
-  Serial.print(F("Full: ")); Serial.print(full); Serial.print(F("  "));
-  Serial.print(F("Visible: ")); Serial.print(full - ir); Serial.print(F("  "));
-  Serial.print(F("Lux: ")); Serial.println(tsl.calculateLux(full, ir), 6);
+  Serial.print(F("[ "));
+  Serial.print(millis());
+  Serial.print(F(" ms ] "));
+  Serial.print(F("IR: "));
+  Serial.print(ir);
+  Serial.print(F("  "));
+  Serial.print(F("Full: "));
+  Serial.print(full);
+  Serial.print(F("  "));
+  Serial.print(F("Visible: "));
+  Serial.print(full - ir);
+  Serial.print(F("  "));
+  Serial.print(F("Lux: "));
+  Serial.println(tsl.calculateLux(full, ir), 6);
 }
 
 /********************RTOS TASKS****************************/
 
+void Task_IoT_Server(void *parameter)
+{
+  while (1)
+  {
+    float cel_val, fahr_val, rh_val;
+    // get the celsius value from the sensor
+    xQueueReceive(xFtempQueue, &fahr_val, 0U);
+    // get the humidity from the sensor
+    xQueueReceive(xRhQueue, &rh_val, 0U);
 
-// void Task_IoT_Server(void *parameter)
-// {
-//   while (1)
-//   {
-//     http.addHeader("Content-Type", "application/json");
+    http.addHeader("Content-Type", "application/json");
 
-//     // send HTTP POST and Store Response(POST return value)
-//     int httpResponseVal = http.POST("{\"key\":\"2436e8c114aa64ee\"}");
-//     String response = http.getString();
+    // send HTTP POST and Store Response(POST return value)
+    // int httpResponseVal = http.POST("{\"key\":\"2436e8c114aa64ee\"}");
+    // String response = http.getString();
 
-//     Serial.print("HTTP Response code: ");
-//     Serial.println(httpResponseVal);
-//     Serial.println(response);
-//   }
-// }
+    // Serial.print("HTTP Response code: ");
+    // Serial.println(httpResponseVal);
+    // Serial.println(response);
+    vTaskDelay(5000 / portTICK_PERIOD_MS);
+  }
+}
 
 /**
  * @brief Stepper Motor Task
@@ -187,8 +193,8 @@ void Task_Stepper(void *parameter)
 
 /**
  * @brief Task that reads the temperature and relative humidity from the HDC1080 Sensor
- * 
- * @param parameter 
+ *
+ * @param parameter
  */
 void Task_HDC1080(void *parameter)
 {
@@ -197,16 +203,22 @@ void Task_HDC1080(void *parameter)
     // convert celsius to Fahr
     float celsius = hdc1080.readTemperature();
     float fahr = ((celsius * 1.8) + 32);
+    // get relative humidity
+    float rh = hdc1080.readHumidity();
 
-    Serial.print("T=");
-    Serial.print(hdc1080.readTemperature());
-    Serial.println("C");
+    xQueueSend(xCtempQueue, &celsius, 0U);
+    xQueueSend(xFtempQueue, &fahr, 0U);
+    xQueueSend(xRhQueue, &rh, 0U);
 
-    Serial.print("T=");
-    Serial.print(fahr);
-    Serial.print("F RH=");
-    Serial.print(hdc1080.readHumidity());
-    Serial.println("%");
+    // Serial.print("T=");
+    // Serial.print(hdc1080.readTemperature());
+    // Serial.println("C");
+
+    // Serial.print("T=");
+    // Serial.print(fahr);
+    // Serial.print("F RH=");
+    // Serial.print(rh);
+    // Serial.println("%");
     // read once every 3 seconds per port tick
     vTaskDelay(3000 / portTICK_PERIOD_MS);
   }
@@ -214,8 +226,8 @@ void Task_HDC1080(void *parameter)
 
 /**
  * @brief Task Reads Sun Sensor Data TR2591
- * 
- * @param Parameters 
+ *
+ * @param Parameters
  */
 void Task_sunSensor(void *Parameters)
 {
@@ -225,10 +237,9 @@ void Task_sunSensor(void *Parameters)
   }
 }
 
-
 /**
  * @brief Arduino Device Setup Function
- * 
+ *
  */
 void setup()
 {
@@ -247,24 +258,24 @@ void setup()
   /********HDC1080****************/
   // setup defaults for HDC1080
   hdc1080.begin(0x40);
-  Serial.print("Manufacturer ID=0x");
-  Serial.println(hdc1080.readManufacturerId(), HEX);
-  Serial.print("Device ID=0x");
-  Serial.println(hdc1080.readDeviceId(), HEX);
-
 
   /************SETUP TSL2591*******************/
-  displaySensorDetails();
+  // displaySensorDetails();
   configureSensor();
 
-
   /**********QUEUE INSTANTIATION********/
+  // stepper
   xStateQueue = xQueueCreate(1, sizeof(int));
+
+  // photosensor
   xVisibleQueue = xQueueCreate(1, sizeof(uint16_t));
   xInfraredQueue = xQueueCreate(1, sizeof(uint16_t));
   xFullSpectQueue = xQueueCreate(1, sizeof(uint16_t));
 
-
+  // temp/hum sensor
+  xCtempQueue = xQueueCreate(1, sizeof(float));
+  xFtempQueue = xQueueCreate(1, sizeof(float));
+  xRhQueue = xQueueCreate(1, sizeof(float));
 
   /************** WIFI SETUP ******************/
   // Connect to WiFi
@@ -282,7 +293,7 @@ void setup()
   // Start up an ESP32 Web Server
   server.begin();
 
-  /*************IOT Setup*****************/ 
+  /*************IOT Setup*****************/
 
   // Begin new connection to cloud website
   // http.begin("http://52.23.160.25:5000/");
@@ -303,7 +314,7 @@ void setup()
   /*********************** Create RTOS Tasks *******************************************************************/
 
   // Web Server and IoT RTOS Server Tasks
-  // xTaskCreatePinnedToCore(Task_IoT_Server, "Task_IoT_Server", 10000, NULL, 1, &iotServerTask, core_zero);
+  xTaskCreatePinnedToCore(Task_IoT_Server, "Task_IoT_Server", 10000, NULL, 4, &iotServerTask, core_zero);
 
   // RTOS Tasks for Connected Devices
   xTaskCreatePinnedToCore(Task_Stepper, "Task_Stepper", 10000, NULL, 4, &RTOS_Tasks, core_one);
@@ -314,7 +325,7 @@ void setup()
 // Handles ESP32 local web client server requests and user/client interactions with the stepper motor
 /**
  * @brief Arduino Loop Function
- * 
+ *
  */
 void loop()
 {
@@ -396,7 +407,7 @@ void loop()
             client.println("<p>When D13_LED = on: Stepper = CW. </p>");
             client.println("<p>Default State: D13_LED off, Stepper = CCW");
             client.println("<body><h3> D13 LED - State: " + output13State + "</h3>");
-            
+
             if (output13State == "off")
             {
               client.println("<p><a href=\"/13/on\"><button class=\"button\">CW</button></a></p>");
@@ -408,13 +419,13 @@ void loop()
 
             client.println("<body><h3>TR2591 Photo Sensor Data</h3>");
             // Get the Visible Light Reading From the Sensor and update to webpage
-            xQueueReceive(xVisibleQueue, &vis_val,0U);
+            xQueueReceive(xVisibleQueue, &vis_val, 0U);
             client.print("<p>Visible: ");
             client.print(vis_val, DEC);
             client.println(" Lumen(s)</p>");
             // Get the Infrared Reading From the Sensor and update to webpage
-            xQueueReceive(xInfraredQueue, &ir_val,0U);
-            client.print("<p>Ifrared: ");
+            xQueueReceive(xInfraredQueue, &ir_val, 0U);
+            client.print("<p>Infrared: ");
             client.print(ir_val, DEC);
             client.println(" micron(s)");
             // Get the Full Spectrum Reading and update to webpage
