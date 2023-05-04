@@ -65,8 +65,8 @@ String serverQueryForCommands = "http://52.23.160.25:5000//IOTAPI/QueryServerFor
 
 // Home WiFi credentials
 // censor this before submitting or pushing to git
-const char *ssid = "sending-stone";
-const char *password = "4579W!$hThis#";
+const char *ssid = "some-network";
+const char *password = "some-password";
 // test
 
 /***********************TSL2591**********************/
