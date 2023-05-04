@@ -45,18 +45,12 @@ static QueueHandle_t xVisibleQueue = NULL;
 static QueueHandle_t xInfraredQueue = NULL;
 static QueueHandle_t xFullSpectQueue = NULL;
 
-// States for debouncing buttons
-int lastState = LOW;
-int currentState;
-
 // Web Server Setup
-// AsyncWebServer server(80);
 WiFiServer server(80);
 String header;
 
 // Auxiliar variables to store current output state
 String output13State = "off";
-// String output27State = "off";
 
 // detect server IP address
 String serverDet = "http://52.23.160.25:5000/IOTAPI/DetectServer";
@@ -64,8 +58,8 @@ String serverReg = "http://52.23.160.25:5000/IOTAPI/RegisterWithServer";
 
 // Home WiFi credentials
 // censor this before submitting or pushing to git
-const char *ssid = "some-network";
-const char *password = "some-password";
+const char *ssid = "sending-stone";
+const char *password = "4579W!$hThis#";
 //test
 
 
@@ -134,10 +128,6 @@ void simpleRead(void)
   vTaskDelay(20 / portTICK_PERIOD_MS);
   xQueueSend(xFullSpectQueue, &fs, 0U);
   vTaskDelay(20 / portTICK_PERIOD_MS);
-  // Serial.print(F("[ ")); Serial.print(millis()); Serial.print(F(" ms ] "));
-  // Serial.print(F("Infrared: "));
-  // Serial.println(ir, DEC);
-  // vTaskDelay(5000 / portTICK_PERIOD_MS);
 }
 
 /**
@@ -188,15 +178,18 @@ void Task_Stepper(void *parameter)
   while (1)
   {
     int rec_val;
-    // NOTE: step_dir(bool dir) has vTaskDelay(10 / portTICK_PERIOD_MS)
+    // NOTE: step_dir(int dir) has vTaskDelay(10 / portTICK_PERIOD_MS)
     // Flag Directions (True = CW, False = CCW)
     xQueueReceive(xStateQueue, &rec_val, 0U);
-    // Serial.print("Rec Val: ");
-    // Serial.println(rec_val);
     step_dir(rec_val);
   }
 }
 
+/**
+ * @brief Task that reads the temperature and relative humidity from the HDC1080 Sensor
+ * 
+ * @param parameter 
+ */
 void Task_HDC1080(void *parameter)
 {
   while (1)
@@ -219,6 +212,11 @@ void Task_HDC1080(void *parameter)
   }
 }
 
+/**
+ * @brief Task Reads Sun Sensor Data TR2591
+ * 
+ * @param Parameters 
+ */
 void Task_sunSensor(void *Parameters)
 {
   while (1)
@@ -227,6 +225,11 @@ void Task_sunSensor(void *Parameters)
   }
 }
 
+
+/**
+ * @brief Arduino Device Setup Function
+ * 
+ */
 void setup()
 {
   Serial.begin(115200);
@@ -255,27 +258,13 @@ void setup()
   configureSensor();
 
 
-  /*****TSL2591***********************************/
-  // Scanner Test
-  // Serial.println(F("Starting Adafruit TSL2591 TEST!"));
-
-  // if (tsl.begin())
-  // {
-  //   Serial.println(F("Found a TSL2591 sensor"));
-  // }
-  // else
-  // {
-  //   Serial.println(F("No sensor found ... check your wiring?"));
-  //   while(1);
-  // }
-  // displaySensorDetails();
-
-
   /**********QUEUE INSTANTIATION********/
   xStateQueue = xQueueCreate(1, sizeof(int));
   xVisibleQueue = xQueueCreate(1, sizeof(uint16_t));
   xInfraredQueue = xQueueCreate(1, sizeof(uint16_t));
   xFullSpectQueue = xQueueCreate(1, sizeof(uint16_t));
+
+
 
   /************** WIFI SETUP ******************/
   // Connect to WiFi
@@ -290,16 +279,13 @@ void setup()
 
   WiFiClient client;
 
-  // Create the state queue
-  xStateQueue = xQueueCreate(1, sizeof(int));
-
   // Start up an ESP32 Web Server
   server.begin();
 
   /*************IOT Setup*****************/ 
 
   // Begin new connection to cloud website
-  //    http.begin("http://52.23.160.25:5000/");
+  // http.begin("http://52.23.160.25:5000/");
   // int detServer = http.begin(serverDet);
   int regServer = http.begin(serverReg);
   Serial.println("IoT Server Connection: 1 = connected, 0 = error connecting: ");
@@ -314,7 +300,7 @@ void setup()
   Serial.println(postCode);
   Serial.println(response);
 
-  /** Create Tasks **/
+  /*********************** Create RTOS Tasks *******************************************************************/
 
   // Web Server and IoT RTOS Server Tasks
   // xTaskCreatePinnedToCore(Task_IoT_Server, "Task_IoT_Server", 10000, NULL, 1, &iotServerTask, core_zero);
@@ -326,11 +312,15 @@ void setup()
 }
 
 // Handles ESP32 local web client server requests and user/client interactions with the stepper motor
+/**
+ * @brief Arduino Loop Function
+ * 
+ */
 void loop()
 {
   WiFiClient client = server.available(); // Listen for incoming clients
 
-  int state;
+  int step_direction;
   uint16_t vis_val;
   uint16_t ir_val;
   uint16_t fullSpec_val;
@@ -368,11 +358,9 @@ void loop()
               // Serial.println("GPIO 13 on");
               output13State = "on";
               // Serial.println("Sending 1 to Queue.. value: ");
-              state = 1;
-              xQueueSend(xStateQueue, &state, 0U);
+              step_direction = 1;
+              xQueueSend(xStateQueue, &step_direction, 0U);
               delay(50);
-              // Serial.print("State Value from server ");
-              // Serial.println(state);
               // Turn D13 on to indicate CW motion on the stepper
               digitalWrite(output13, HIGH);
             }
@@ -381,17 +369,16 @@ void loop()
               // Serial.println("GPIO 13 off");
               output13State = "off";
               // Serial.println("Sending 1 to Queue.. value: ");
-              state = 0;
-              xQueueSend(xStateQueue, &state, 0U);
+              step_direction = 0;
+              xQueueSend(xStateQueue, &step_direction, 0U);
               delay(50);
               // Turn D13 off to indicate CCW motion on stepper
               digitalWrite(output13, LOW);
-              // Serial.print("State Value from server ");
-              // Serial.println(state);
             }
             // Display the HTML web page
             client.println("<!DOCTYPE html><html>");
             client.println("<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
+
             client.println("<link rel=\"icon\" href=\"data:,\">");
             // CSS to style the on/off buttons
             // Feel free to change the background-color and font-size attributes to fit your preferences
@@ -409,6 +396,7 @@ void loop()
             client.println("<p>When D13_LED = on: Stepper = CW. </p>");
             client.println("<p>Default State: D13_LED off, Stepper = CCW");
             client.println("<body><h3> D13 LED - State: " + output13State + "</h3>");
+            
             if (output13State == "off")
             {
               client.println("<p><a href=\"/13/on\"><button class=\"button\">CW</button></a></p>");

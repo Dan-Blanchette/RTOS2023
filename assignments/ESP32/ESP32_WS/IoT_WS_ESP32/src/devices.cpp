@@ -14,14 +14,6 @@ void setup_stepper()
 }
 
 
-// void setup_buttons()
-// {
-//    pinMode(BUTTON_LEFT, INPUT);
-//    pinMode(BUTTON_RIGHT, INPUT);
-//    pinMode(BUTTON_MID, INPUT);
-
-// }
-
 /**
  * @brief Moves the stepper motor
  * 
@@ -104,6 +96,7 @@ void stepper_move(int step)
  */
 void step_dir(int direction)
 {
+   //CW
    if (direction == 1)
    {
       for (int i = 9; i > 1; i--)
@@ -112,6 +105,7 @@ void step_dir(int direction)
          vTaskDelay(10 / portTICK_PERIOD_MS);
       }
    }
+   // CCW
    else if (direction == 0)
    {
       for (int i = 1; i < 9; i++)
