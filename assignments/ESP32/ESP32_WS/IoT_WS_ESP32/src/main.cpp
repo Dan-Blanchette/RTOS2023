@@ -150,26 +150,48 @@ void advancedRead(void)
 
 /********************RTOS TASKS****************************/
 
-void Task_IoT_Server(void *parameter)
+void Task_IoT_Server_Data(void *parameter)
 {
   while (1)
   {
+
+    printf("Attempting to POST data....\n");
+    const String auth_code = "8fe0f80a4e9f7bf3";
     float cel_val, fahr_val, rh_val;
-    // get the celsius value from the sensor
+    float light = 0;
+    String JSON, response, reply;
+    // get the fahrenheit value from the sensor
     xQueueReceive(xFtempQueue, &fahr_val, 0U);
     // get the humidity from the sensor
     xQueueReceive(xRhQueue, &rh_val, 0U);
 
+    http.begin("http://52.23.160.25:5000//IOTAPI/IOTData");
     http.addHeader("Content-Type", "application/json");
-
-    // send HTTP POST and Store Response(POST return value)
-    // int httpResponseVal = http.POST("{\"key\":\"2436e8c114aa64ee\"}");
+    // // Send POST code for registration
+    // int postCode = http.POST("{\"key\":\"2436e8c114aa64ee\",\"iotid\":1001}");
     // String response = http.getString();
-
-    // Serial.print("HTTP Response code: ");
-    // Serial.println(httpResponseVal);
+    // Serial.print("HTTP Response Code: ");
+    // Serial.println(postCode);
     // Serial.println(response);
-    vTaskDelay(5000 / portTICK_PERIOD_MS);
+
+    // send the data
+    JSON += "{\"auth_code\": \"";
+    JSON += auth_code;
+    JSON += "\", \"temperature\": ";
+    JSON += fahr_val;
+    JSON += ", \"humidity\": ";
+    JSON += rh_val;
+    JSON += ", \"light\": ";
+    JSON += light;
+    JSON += "}";
+
+    Serial.println(JSON);
+    printf("\n");
+
+    response = http.POST(JSON);
+    Serial.println(response);
+
+    vTaskDelay(10000 / portTICK_PERIOD_MS);
   }
 }
 
@@ -295,25 +317,25 @@ void setup()
   /*************IOT Setup*****************/
 
   // Begin new connection to cloud website
-  // http.begin("http://52.23.160.25:5000/");
-  // int detServer = http.begin(serverDet);
+  http.begin("http://52.23.160.25:5000/");
+  int detServer = http.begin(serverDet);
   int regServer = http.begin(serverReg);
   Serial.println("IoT Server Connection: 1 = connected, 0 = error connecting: ");
   Serial.printf("Connection Status: %d\n", regServer);
 
-  // Register Device with the server
-  http.addHeader("Content-Type", "application/json");
-  // Send POST code for registration
-  int postCode = http.POST("{\"key\":\"2436e8c114aa64ee\",\"iotid\":1001}");
-  String response = http.getString();
-  Serial.print("HTTP Response Code: ");
-  Serial.println(postCode);
-  Serial.println(response);
+  // // Register Device with the server
+  // http.addHeader("Content-Type", "application/json");
+  // // Send POST code for registration
+  // int postCode = http.POST("{\"key\":\"2436e8c114aa64ee\",\"iotid\":1001}");
+  // String response = http.getString();
+  // Serial.print("HTTP Response Code: ");
+  // Serial.println(postCode);
+  // Serial.println(response);
 
   /*********************** Create RTOS Tasks *******************************************************************/
 
   // Web Server and IoT RTOS Server Tasks
-  xTaskCreatePinnedToCore(Task_IoT_Server, "Task_IoT_Server", 10000, NULL, 4, &iotServerTask, core_zero);
+  xTaskCreatePinnedToCore(Task_IoT_Server_Data, "Task_IoT_Server_Data", 10000, NULL, 4, &iotServerTask, core_zero);
 
   // RTOS Tasks for Connected Devices
   xTaskCreatePinnedToCore(Task_Stepper, "Task_Stepper", 10000, NULL, 4, &RTOS_Tasks, core_one);
