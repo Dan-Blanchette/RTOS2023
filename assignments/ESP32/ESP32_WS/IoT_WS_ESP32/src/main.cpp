@@ -1,9 +1,10 @@
 /**
  * @file main.cpp
  * @author Dan Blanchette
- * @brief  This program will run a web sever on the ESP32 Core 0 (Uses Loop Function).
- * RTOS tasks for 2 I2C devices(temp/hum sensor, sunlight sensor, and the stepper motor on ESP32's processor
- * are ran on core 1.
+ * @brief  This program will push data to an AWS cloud sever on the ESP32 Core 0 (Uses Loop Function).
+ * RTOS tasks for 2 I2C devices(temp/hum sensor, sunlight sensor, and the stepper motor on ESP32's 
+ * processors are ran on core 1.
+ * 
  * Credit: James Lasso for help with RESTful and IoT server functionality.
  * @version 0.1
  * @date 2023-04-12
@@ -11,6 +12,7 @@
  * @copyright Copyright (c) 2023
  *
  */
+
 #include "devices.h"
 #include <string.h>
 
